@@ -1,12 +1,12 @@
-// src/server.js (ESM, no helmet)
-import dotenv from "dotenv";
-import express from "express";
-import cors from "cors";
-import { v4 as uuidv4 } from "uuid";
-import { Connection, PublicKey } from "@solana/web3.js";
-import { ethers } from "ethers";
+// src/server.js
+// CommonJS, no helmet, minimal logic
 
-dotenv.config();
+require("dotenv").config();
+const express = require("express");
+const cors = require("cors");
+const { v4: uuidv4 } = require("uuid");
+
+const app = express();
 
 // ---------- CORS ----------
 const corsOriginsEnv = process.env.CORS_ORIGIN || "";
@@ -14,8 +14,6 @@ const allowedOrigins = corsOriginsEnv
   .split(",")
   .map((s) => s.trim())
   .filter(Boolean);
-
-const app = express();
 
 app.use(
   cors({
@@ -34,8 +32,7 @@ app.use(express.json());
  *   createdAt,
  *   updatedAt,
  *   request: { ...payload from frontend ... },
- *   errorMessage?: string,
- *   evmTxHash?: string
+ *   errorMessage?: string
  * }
  */
 const jobs = {};
@@ -62,15 +59,9 @@ function updateJob(id, updates) {
   return job;
 }
 
-function requireEnv(name, msg) {
-  const val = process.env[name];
-  if (!val) {
-    throw new Error(msg || `Missing env var: ${name}`);
-  }
-  return val;
-}
-
 // ---------- Routes ----------
+
+// Simple healthcheck
 app.get("/health", (req, res) => {
   res.json({
     status: "ok",
@@ -79,6 +70,7 @@ app.get("/health", (req, res) => {
   });
 });
 
+// Frontend calls this after user does shielded deposit (or simulated)
 app.post("/bridge/submit", (req, res) => {
   try {
     const body = req.body || {};
@@ -147,6 +139,7 @@ app.post("/bridge/submit", (req, res) => {
   }
 });
 
+// Get job status
 app.get("/bridge/job/:id", (req, res) => {
   const job = jobs[req.params.id];
   if (!job) {
@@ -155,8 +148,8 @@ app.get("/bridge/job/:id", (req, res) => {
   res.json(job);
 });
 
-// OPTIONAL: manual payout trigger
-app.post("/bridge/job/:id/execute", async (req, res) => {
+// Manual "execute" endpoint (simulated payout)
+app.post("/bridge/job/:id/execute", (req, res) => {
   const jobId = req.params.id;
   const job = jobs[jobId];
   if (!job) {
@@ -169,70 +162,23 @@ app.post("/bridge/job/:id/execute", async (req, res) => {
       .json({ error: `Job is already ${job.status}, cannot execute.` });
   }
 
-  const enableEvmSend = process.env.ENABLE_EVM_SEND === "true";
+  // For now: simulation only, no real EVM send
+  console.log(
+    "[bridge] Simulated payout for job",
+    jobId,
+    "to",
+    job.request.receiver,
+    "amount",
+    job.request.amount
+  );
 
-  try {
-    updateJob(jobId, { status: "executing" });
+  updateJob(jobId, { status: "completed" });
 
-    if (!enableEvmSend) {
-      console.log(
-        "[bridge] Simulated EVM payout for job",
-        jobId,
-        "to",
-        job.request.receiver,
-        "amount",
-        job.request.amount
-      );
-      updateJob(jobId, { status: "completed" });
-      return res.json({
-        jobId,
-        status: "completed",
-        simulated: true,
-      });
-    }
-
-    const rpcUrl = requireEnv(
-      "EVM_RPC_URL",
-      "EVM_RPC_URL is required when ENABLE_EVM_SEND=true"
-    );
-    const pk = requireEnv(
-      "EVM_PRIVATE_KEY",
-      "EVM_PRIVATE_KEY is required when ENABLE_EVM_SEND=true"
-    );
-    const decimals = Number(process.env.EVM_NATIVE_DECIMALS || "18");
-
-    const provider = new ethers.providers.JsonRpcProvider(rpcUrl);
-    const wallet = new ethers.Wallet(pk, provider);
-
-    const amountStr = String(job.request.amount || "0");
-    const valueWei = ethers.utils.parseUnits(amountStr, decimals);
-
-    const tx = await wallet.sendTransaction({
-      to: job.request.receiver,
-      value: valueWei,
-    });
-
-    console.log("[bridge] Sent EVM tx", tx.hash, "for job", jobId);
-
-    updateJob(jobId, {
-      status: "completed",
-      evmTxHash: tx.hash,
-    });
-
-    res.json({
-      jobId,
-      status: "completed",
-      evmTxHash: tx.hash,
-      simulated: false,
-    });
-  } catch (err) {
-    console.error("[bridge] execute error:", err);
-    updateJob(jobId, {
-      status: "failed",
-      errorMessage: err.message || String(err),
-    });
-    res.status(500).json({ error: "Failed to execute EVM payout" });
-  }
+  res.json({
+    jobId,
+    status: "completed",
+    simulated: true,
+  });
 });
 
 // ---------- Start server ----------
