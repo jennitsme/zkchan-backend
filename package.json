@@ -1,18 +1,15 @@
 {
   "name": "zkchan-backend",
   "version": "0.1.0",
-  "description": "Backend for zkChan shielded bridge",
-  "type": "module",
+  "description": "Minimal backend for zkChan shielded bridge",
   "main": "src/server.js",
   "scripts": {
     "start": "node src/server.js",
     "dev": "nodemon src/server.js"
   },
   "dependencies": {
-    "@solana/web3.js": "^1.87.6",
     "cors": "^2.8.5",
     "dotenv": "^16.4.1",
-    "ethers": "^5.7.2",
     "express": "^4.19.2",
     "uuid": "^9.0.1"
   },
