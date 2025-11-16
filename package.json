@@ -2,6 +2,7 @@
   "name": "zkchan-backend",
   "version": "0.1.0",
   "description": "Backend for zkChan shielded bridge",
+  "type": "module",
   "main": "src/server.js",
   "scripts": {
     "start": "node src/server.js",
