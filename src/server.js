@@ -1,13 +1,12 @@
-// src/server.js
-require("dotenv").config();
+// src/server.js (ESM, no helmet)
+import dotenv from "dotenv";
+import express from "express";
+import cors from "cors";
+import { v4 as uuidv4 } from "uuid";
+import { Connection, PublicKey } from "@solana/web3.js";
+import { ethers } from "ethers";
 
-const express = require("express");
-const cors = require("cors");
-const { v4: uuidv4 } = require("uuid");
-const { Connection, PublicKey } = require("@solana/web3.js");
-const { ethers } = require("ethers");
-
-const app = express();
+dotenv.config();
 
 // ---------- CORS ----------
 const corsOriginsEnv = process.env.CORS_ORIGIN || "";
@@ -15,6 +14,8 @@ const allowedOrigins = corsOriginsEnv
   .split(",")
   .map((s) => s.trim())
   .filter(Boolean);
+
+const app = express();
 
 app.use(
   cors({
@@ -70,7 +71,6 @@ function requireEnv(name, msg) {
 }
 
 // ---------- Routes ----------
-
 app.get("/health", (req, res) => {
   res.json({
     status: "ok",
@@ -79,7 +79,7 @@ app.get("/health", (req, res) => {
   });
 });
 
-app.post("/bridge/submit", async (req, res) => {
+app.post("/bridge/submit", (req, res) => {
   try {
     const body = req.body || {};
 
@@ -111,9 +111,6 @@ app.post("/bridge/submit", async (req, res) => {
         .json({ error: "Missing depositSignature from Solana side" });
     }
 
-    // NOTE: untuk MVP kita belum verify tx ke Solana.
-    // Kalau mau, nanti set SOLANA_VERIFY_DEPOSITS=true dan tulis kode cek tx.
-
     const job = createJob({
       mode,
       amount,
@@ -130,7 +127,15 @@ app.post("/bridge/submit", async (req, res) => {
       evmAddress,
     });
 
-    console.log("[bridge] New job:", job.id, "amount:", amount, fromChain, "->", toChain);
+    console.log(
+      "[bridge] New job:",
+      job.id,
+      "amount:",
+      amount,
+      fromChain,
+      "->",
+      toChain
+    );
 
     res.json({
       jobId: job.id,
@@ -150,7 +155,7 @@ app.get("/bridge/job/:id", (req, res) => {
   res.json(job);
 });
 
-// OPTIONAL: endpoint manual untuk trigger payout EVM (admin / cron)
+// OPTIONAL: manual payout trigger
 app.post("/bridge/job/:id/execute", async (req, res) => {
   const jobId = req.params.id;
   const job = jobs[jobId];
@@ -170,7 +175,6 @@ app.post("/bridge/job/:id/execute", async (req, res) => {
     updateJob(jobId, { status: "executing" });
 
     if (!enableEvmSend) {
-      // Simulasi saja, tidak kirim token sungguhan
       console.log(
         "[bridge] Simulated EVM payout for job",
         jobId,
@@ -187,7 +191,6 @@ app.post("/bridge/job/:id/execute", async (req, res) => {
       });
     }
 
-    // --- EVM payout nyata (gunakan testnet dulu!) ---
     const rpcUrl = requireEnv(
       "EVM_RPC_URL",
       "EVM_RPC_URL is required when ENABLE_EVM_SEND=true"
